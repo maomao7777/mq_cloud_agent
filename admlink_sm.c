@@ -34,7 +34,20 @@ void ag_handle_clttraffic(void *eloop_ctx, void *timeout_ctx)
 	eloop_register_timeout(0,MQTT_SYN_T,ag_handle_clttraffic,p,NULL);
 }
 /*****************************************************************************/
-void check_mqrecv(mqconn* p,agent* pag)
+void check_agstatus(agent* pag)
+{
+	static unsigned long int chkcnt=0;
+	time_t timer;
+	if(pag->agstatus==isErr)
+		exit_link(1);//it is tmp method, we can chek endpoit/cert valid in the furture;
+	time(&timer);
+	pag->tinfo = localtime(&timer);
+	pag->agstatus=isOk;
+	chkcnt++;
+	return;
+}
+/*****************************************************************************/
+int check_mqrecv(mqconn* p,agent* pag)
 {
   	switch(p->status)
 	{
@@ -45,7 +58,7 @@ void check_mqrecv(mqconn* p,agent* pag)
 			dbg_printf("chkrecvconn:state is unconnected\n");
 			open_nb_socket(&p->biofd, &p->ssl_ctx, p->daddr, p->dport, p->ca_file, NULL,p->clt_key,p->clt_cert);
 			if (p->biofd == NULL) {
-				return;
+				return 0;
 			}
 			BIO_get_fd(p->biofd,&p->connfd);
 			dbg_printf("conn is %d\n",p->connfd);
@@ -62,12 +75,12 @@ void check_mqrecv(mqconn* p,agent* pag)
 			/* check that we don't have any errors */
 			if (p->mqclt.error != MQTT_OK) {
 				fprintf(stderr, "error: %s\n", mqtt_error_str(p->mqclt.error));
-				return;
+				return 0;
 			}
 			if(mqtt_sync(&p->mqclt)!= MQTT_OK)
 			{
 				fprintf(stderr,"mqtt connect sync error\n");
-				return;
+				return 0;
 			}
 			sleep(1); //waiting broker for 1s this is important!!
 			/* subscribe */
@@ -88,10 +101,10 @@ void check_mqrecv(mqconn* p,agent* pag)
 		default:
 		break;
 	}
-	return;
+	return 1;
 }
 /*****************************************************************************/
-void check_mqupld(mqconn* p,agent* pag)
+int check_mqupld(mqconn* p,agent* pag)
 {
   	switch(p->status)
 	{
@@ -102,7 +115,7 @@ void check_mqupld(mqconn* p,agent* pag)
 			dbg_printf("chkupldconn:state is unconnected\n");
 			open_nb_socket(&p->biofd, &p->ssl_ctx, p->daddr, p->dport, p->ca_file, NULL,p->clt_key,p->clt_cert);
 			if (p->biofd == NULL) {
-				return;
+				return 0;
 			}
 			BIO_get_fd(p->biofd,&p->connfd);
 			dbg_printf("conn is %d\n",p->connfd);
@@ -119,12 +132,12 @@ void check_mqupld(mqconn* p,agent* pag)
 			/* check that we don't have any errors */
 			if (p->mqclt.error != MQTT_OK) {
 				fprintf(stderr, "error: %s\n", mqtt_error_str(p->mqclt.error));
-				return;
+				return 0;
 			}
 			if(mqtt_sync(&p->mqclt)!= MQTT_OK)
 			{
 				fprintf(stderr,"mqtt connect sync error\n");
-				return;
+				return 0;
 			}
 			p->status=1;
 			eloop_register_timeout(0,MQTT_SYN_T, ag_handle_clttraffic,p,NULL);
@@ -139,15 +152,17 @@ void check_mqupld(mqconn* p,agent* pag)
 		default:
 		break;
 	}
-	return;
+	return 1;
 }
 /*****************************************************************************/
-void chk_agstat(void *eloop_ctx, void *timeout_ctx)
+/*ag state_machine*/
+void chk_agstatm(void *eloop_ctx, void *timeout_ctx)
 {
 	agent* p=(agent*)eloop_ctx;
-	check_mqrecv(&p->mqrecv,p);
-	check_mqupld(&p->mqupld,p);
-	if(p->agstatus<0)
-		exit_link(1);//it is tmp method, we can chek endpoit/cert valid in the furture;
-	eloop_register_timeout(SM_CHECK_T,0,chk_agstat,p,NULL);	
+	if(check_mqrecv(&p->mqrecv,p)
+		&&check_mqupld(&p->mqupld,p)
+	)
+		check_agstatus(p);
+	eloop_register_timeout(SM_CHECK_T,0,chk_agstatm,p,NULL);
+	return;
 }

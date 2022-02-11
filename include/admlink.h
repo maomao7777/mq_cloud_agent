@@ -32,6 +32,9 @@
 #define SM_CHECK_T 30U //unit sec
 #define BUF_SEND_SIZE 4096
 #define BUF_RECV_SIZE 2048
+#define AG_NAME "maomaoag"
+#define AG_VER "9.9.9"
+#define MSG_VER "9.9.9"
 enum agstatus
 {
     isErr=-1,
@@ -64,7 +67,7 @@ struct _agent
 	char devid[128];
 	mqconn mqrecv;
 	mqconn mqupld;
-	struct tm tinfo;
+	struct tm* tinfo;
 };
 typedef struct _agent agent;
 void exit_link(int exitval);

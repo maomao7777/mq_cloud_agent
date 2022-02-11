@@ -241,7 +241,7 @@ int main(int argc, char** argv)
 #endif
 	eloop_init(NULL);
 	eloop_register_read_sock(admcd.ctrl_sock, admlink_ctrl_iface_receive, p, NULL);
-    eloop_register_timeout(1,0,chk_agstat,p,NULL);//start state machine(sm) after 1 s
+    eloop_register_timeout(1,0,chk_agstatm,p,NULL);//start state machine(sm) after 1 s
     eloop_run();
 
     out:

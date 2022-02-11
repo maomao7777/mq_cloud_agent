@@ -2,6 +2,70 @@
 #include <admlink_misc.h>
 #include <admlink_ctrl_if.h>
 static char ctrl_buf[128];
+int admlink_cmd_stop(agent* pag, char* recvbuf);
+int admlink_cmd_sendtest(agent* pag, char* recvbuf);
+/*****************************************************************************/
+struct _admlcmd_tb_ele 
+{
+	const char* cmd;
+	int (*cmd_hdl)(agent* pag,char* recvbuf);
+};
+typedef struct _admlcmd_tb_ele  admlcmd_tb_ele;
+/*****************************************************************************/
+admlcmd_tb_ele adlcmd_tbl[]=
+{
+	{"stop", admlink_cmd_stop},
+	{"sendtest", admlink_cmd_sendtest},
+	{NULL},
+};
+/*****************************************************************************/
+int admlink_cmd_stop(agent* pag, char* recvbuf)
+{
+	eloop_register_timeout(0,MQTT_SYN_T,eloop_set_exit,NULL,NULL);
+	return 1;
+}
+/*****************************************************************************/
+int admlink_cmd_sendtest(agent* pag, char* recvbuf)
+{
+	mqconn *p =&pag->mqupld;
+	char resbuf[512];
+	char tmpbuf[128];
+	memset(resbuf,0,sizeof(resbuf));
+	memset(tmpbuf,0,sizeof(tmpbuf));
+	strcat(resbuf,"{");
+	snprintf(tmpbuf,sizeof(tmpbuf),"\"type\":\"event\"");
+	strcat(resbuf,tmpbuf);
+	snprintf(tmpbuf,sizeof(tmpbuf),",\"ver\":\"2.00\"");
+	strcat(resbuf,tmpbuf);
+	snprintf(tmpbuf,sizeof(tmpbuf),",\"prdct\":\"AP\"");
+	strcat(resbuf,tmpbuf);
+	snprintf(tmpbuf,sizeof(tmpbuf),",\"act_id\":9999");
+	strcat(resbuf,tmpbuf);
+	snprintf(tmpbuf,sizeof(tmpbuf),",\"act_sts\":0");
+	strcat(resbuf,tmpbuf);
+	snprintf(tmpbuf,sizeof(tmpbuf),",\"act_trg\":0");
+	strcat(resbuf,tmpbuf);
+	snprintf(tmpbuf,sizeof(tmpbuf),",\"act_para\":\"Test message\"");
+	strcat(resbuf,tmpbuf);
+	snprintf(tmpbuf,sizeof(tmpbuf),",\"evt_id\":1");
+	strcat(resbuf,tmpbuf);
+	snprintf(tmpbuf,sizeof(tmpbuf),",\"agt_name\":\"%s\"",AG_NAME);
+	strcat(resbuf,tmpbuf);
+	snprintf(tmpbuf,sizeof(tmpbuf),",\"agt_ver\":\"%s\"",AG_VER);
+	strcat(resbuf,tmpbuf);
+	snprintf(tmpbuf,sizeof(tmpbuf),",\"ms_ver\":\"%s\"",MSG_VER);
+	strcat(resbuf,tmpbuf);
+	snprintf(tmpbuf,sizeof(tmpbuf),",\"dev_id\":\"%s\"",pag->devid);
+	strcat(resbuf,tmpbuf);
+	strftime(tmpbuf,sizeof(tmpbuf),",\"date\":\"%Y/%m/%d %H:%M:%S\"",pag->tinfo);
+	strcat(resbuf,tmpbuf);
+	snprintf(tmpbuf,sizeof(tmpbuf),",\"msg\":\"テスト通知\"");
+	strcat(resbuf,tmpbuf);
+	strcat(resbuf,"}");
+	set_mqtt_publish_nexsync(p, p->topicsend,
+		resbuf, MQTT_PUBLISH_QOS_1);
+	return 1;
+}
 /*****************************************************************************/
 int x_get_time_of_day(struct timeval *tv)
 {
@@ -18,59 +82,25 @@ int admlink_cmd_handle(agent* pag ,char *buf, char *reply)
 	//Buf and reply must exist.
 	if(!buf || !reply)
 		return -1;
-	if(strcmp(buf,"sendtest")==0)
+	int n=0;
+	time_t timer;
+    time(&timer);
+	pag->tinfo = localtime(&timer);
+	while(adlcmd_tbl[n].cmd!=NULL)
 	{
-		mqconn *p =&pag->mqupld;
-		char application_message[256]={0};
-		time_t timer;
-        time(&timer);
-        struct tm* tm_info = localtime(&timer);
-        char timebuf[64];
-		char didbuf[64];
-		char namebuf[64];
-		char msverbuf[64];
-		char agverbuf[64];
-		memset(didbuf,0,sizeof(didbuf));
-		sprintf(didbuf,",\"dev_id\":\"%s\"",pag->devid);
-		
-		memset(namebuf,0,sizeof(namebuf));
-		sprintf(namebuf,",\"agt_name\":\"%s\"","maomaoag");
-		memset(msverbuf,0,sizeof(msverbuf));
-		sprintf(msverbuf,",\"ms_ver\":\"%s\"","9.9.9");
-		
-		memset(agverbuf,0,sizeof(agverbuf));
-		sprintf(agverbuf,",\"agt_ver\":\"%s\"","9.9.9");
-		
-		memset(timebuf,0,sizeof(timebuf));
-        strftime(timebuf,sizeof(timebuf),",\"date\":\"%Y/%m/%d %H:%M:%S\"",tm_info);
-		
-		sprintf(application_message,"{%s%s%s%s%s%s}",
-			"\"type\":\"event\""
-			",\"ver\":\"2.00\""
-			",\"prdct\":\"unknown\""
-			",\"evt_id\":1"
-			",\"act_id\":9999"
-			",\"act_trg\":0"
-			",\"act_para\":\"Test message\""
-			",\"act_sts\":0"
-			",\"msg\":\"test123\""
-			,msverbuf
-			,agverbuf
-			,namebuf
-			,didbuf
-			,timebuf
-		);
-		set_mqtt_publish_nexsync(p,p->topicsend, 
-					application_message, MQTT_PUBLISH_QOS_1);
-		strcpy(reply,"OK");
+		if(strncmp(buf,adlcmd_tbl[n].cmd,strlen(adlcmd_tbl[n].cmd))==0)
+		{
+
+			if(!adlcmd_tbl[n].cmd_hdl(pag,buf))
+				strcpy(reply,"UNKNOWN_ERR");
+			else
+				strcpy(reply,"OK");
+			goto end;
+		}
+		n++;
 	}
-	else if(strcmp(buf,"stop")==0)
-	{
-		eloop_register_timeout(1,0,eloop_set_exit,NULL,NULL);
-		strcpy(reply,"OK");
-	}
-	else
-		strcpy(reply,"UNKNOWNCMD");
+	strcpy(reply,"UNKNOWNCMD");
+	end:
 	return strlen (reply);
 }
 
