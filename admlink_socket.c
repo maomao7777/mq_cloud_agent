@@ -38,8 +38,9 @@ static unsigned char *next_protos_parse(unsigned short *outlen,
 void open_nb_socket(BIO** bio, SSL_CTX** ssl_ctx, const char* addr, const char* port,
 					const char* ca_file, const char* ca_path,
 				   const char* clt_key, const char* clt_cert) {
-    *ssl_ctx = SSL_CTX_new(SSLv23_client_method());
+    SSL_library_init();
     SSL* ssl;
+    *ssl_ctx = SSL_CTX_new(SSLv23_client_method());
 	long int sslver_ret;
 # if 0
 	const char* alpnclt="x-amzn-mqtt-ca";//this is only for 443 port aws broker
